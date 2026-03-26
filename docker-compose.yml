@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: taskqueue
+      POSTGRES_PASSWORD: taskqueue
+      POSTGRES_DB: taskqueue
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskqueue"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    ports:
+      - "8080:8080"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    env_file: .env
+    environment:
+      - WORKER_QUEUES=default,critical,email
+      - WORKER_CONCURRENCY=5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # scale this up: docker compose up --scale worker=3
+    deploy:
+      replicas: 1
+
+volumes:
+  postgres_data:
+  redis_data:

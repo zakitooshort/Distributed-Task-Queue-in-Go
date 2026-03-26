@@ -1,0 +1,6 @@
+.env
+go.sum
+bin/
+dashboard/node_modules/
+dashboard/dist/
+*.exe
