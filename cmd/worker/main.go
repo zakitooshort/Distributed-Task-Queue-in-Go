@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"math/rand"
+
 	"github.com/joho/godotenv"
 	"github.com/ouzai/task-queue/internal/queue"
 	"github.com/ouzai/task-queue/internal/store"
@@ -74,43 +76,70 @@ func main() {
 
 // registerHandlers is where you add your actual job type implementations
 func registerHandlers(w *worker.Worker) {
-	// example: send email
-	w.RegisterHandler("send_email", func(ctx context.Context, payload json.RawMessage) error {
+	// process_payment — goes to critical queue, fails 30% of the time to show retry/DLQ flow
+	w.RegisterHandler("process_payment", func(ctx context.Context, payload json.RawMessage) error {
 		var p struct {
-			To      string `json:"to"`
-			Subject string `json:"subject"`
-			Body    string `json:"body"`
+			OrderID  string  `json:"order_id"`
+			Customer string  `json:"customer"`
+			Amount   float64 `json:"amount"`
 		}
 		if err := json.Unmarshal(payload, &p); err != nil {
 			return fmt.Errorf("invalid payload: %w", err)
 		}
-
-		// simulate some work
-		slog.Info("sending email", "to", p.To, "subject", p.Subject)
-		time.Sleep(500 * time.Millisecond)
-		slog.Info("email sent", "to", p.To)
+		slog.Info("processing payment", "order_id", p.OrderID, "customer", p.Customer, "amount", p.Amount)
+		time.Sleep(800 * time.Millisecond)
+		if rand.Float32() < 0.3 {
+			return fmt.Errorf("payment declined for order %s (simulated)", p.OrderID)
+		}
+		slog.Info("payment accepted", "order_id", p.OrderID, "amount", p.Amount)
 		return nil
 	})
 
-	// example: process image
-	w.RegisterHandler("process_image", func(ctx context.Context, payload json.RawMessage) error {
+	// send_confirmation_email — goes to email queue, always succeeds
+	w.RegisterHandler("send_confirmation_email", func(ctx context.Context, payload json.RawMessage) error {
 		var p struct {
-			ImageURL string `json:"image_url"`
-			Format   string `json:"format"`
+			OrderID       string `json:"order_id"`
+			Customer      string `json:"customer"`
+			CustomerEmail string `json:"customer_email"`
 		}
 		if err := json.Unmarshal(payload, &p); err != nil {
 			return fmt.Errorf("invalid payload: %w", err)
 		}
-
-		slog.Info("processing image", "url", p.ImageURL, "format", p.Format)
-		time.Sleep(2 * time.Second)
-		slog.Info("image processed", "url", p.ImageURL)
+		slog.Info("sending confirmation email", "order_id", p.OrderID, "to", p.CustomerEmail)
+		time.Sleep(400 * time.Millisecond)
+		slog.Info("confirmation email sent", "order_id", p.OrderID, "to", p.CustomerEmail)
 		return nil
 	})
 
-	// a job type that always fails — useful for testing the retry/DLQ flow
-	w.RegisterHandler("failing_job", func(ctx context.Context, payload json.RawMessage) error {
-		return fmt.Errorf("this job always fails (for testing)")
+	// update_inventory — goes to default queue, always succeeds
+	w.RegisterHandler("update_inventory", func(ctx context.Context, payload json.RawMessage) error {
+		var p struct {
+			OrderID string   `json:"order_id"`
+			Items   []string `json:"items"`
+		}
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return fmt.Errorf("invalid payload: %w", err)
+		}
+		slog.Info("updating inventory", "order_id", p.OrderID, "items", p.Items)
+		time.Sleep(600 * time.Millisecond)
+		slog.Info("inventory updated", "order_id", p.OrderID)
+		return nil
+	})
+
+	// generate_invoice — goes to default queue, always succeeds
+	w.RegisterHandler("generate_invoice", func(ctx context.Context, payload json.RawMessage) error {
+		var p struct {
+			OrderID  string  `json:"order_id"`
+			Customer string  `json:"customer"`
+			Total    float64 `json:"total"`
+		}
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return fmt.Errorf("invalid payload: %w", err)
+		}
+		slog.Info("generating invoice", "order_id", p.OrderID, "customer", p.Customer, "total", p.Total)
+		time.Sleep(1200 * time.Millisecond)
+		slog.Info("invoice generated", "order_id", p.OrderID)
+		return nil
 	})
 }
 

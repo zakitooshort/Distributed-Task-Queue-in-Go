@@ -7,52 +7,84 @@ interface Props {
 export function WorkerStatus({ workers }: Props) {
   if (workers.length === 0) {
     return (
-      <div className="bg-slate-800 rounded-lg p-6 text-center text-slate-500 text-sm">
-        no workers connected — run <code className="text-slate-300">go run ./cmd/worker</code>
+      <div className="col-span-full text-center py-16">
+        <div className="w-12 h-12 rounded-xl bg-surface-overlay border border-surface-border flex items-center justify-center mx-auto mb-3">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-zinc-600">
+            <path fillRule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.293 1.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L7.586 10 5.293 7.707a1 1 0 010-1.414zM11 12a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <div className="text-zinc-400 text-sm font-medium">No workers connected</div>
+        <div className="text-zinc-600 text-xs mt-1">
+          Run <code className="text-zinc-400 bg-surface-overlay px-1.5 py-0.5 rounded font-mono">go run ./cmd/worker</code>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="bg-slate-800 rounded-lg overflow-hidden">
-      <div className="p-4 border-b border-slate-700">
-        <h2 className="text-lg font-semibold text-white">workers</h2>
-      </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-slate-400 text-xs uppercase border-b border-slate-700">
-            <th className="text-left px-4 py-2">id</th>
-            <th className="text-left px-4 py-2">status</th>
-            <th className="text-left px-4 py-2">queues</th>
-            <th className="text-left px-4 py-2">current job</th>
-            <th className="text-left px-4 py-2">last seen</th>
-          </tr>
-        </thead>
-        <tbody>
-          {workers.map((w) => {
-            const isActive = w.status === 'active'
-            return (
-              <tr key={w.id} className="border-b border-slate-700">
-                <td className="px-4 py-2 font-mono text-xs text-slate-300">{w.id}</td>
-                <td className="px-4 py-2">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full ${
-                      isActive ? 'bg-green-700 text-green-100' : 'bg-slate-600 text-slate-300'
-                    }`}
-                  >
-                    {w.status}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-slate-400 text-xs">{w.queues}</td>
-                <td className="px-4 py-2 text-slate-500 font-mono text-xs">
-                  {w.current_job ? w.current_job.slice(0, 8) + '...' : '—'}
-                </td>
-                <td className="px-4 py-2 text-slate-500 text-xs">{fmtRelative(w.last_seen)}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {workers.map((w) => {
+        const isActive = w.status === 'active'
+        const queues = w.queues.split(',').map((q) => q.trim()).filter(Boolean)
+
+        return (
+          <div
+            key={w.id}
+            className="bg-surface-raised border border-surface-border rounded-xl p-5 relative overflow-hidden"
+          >
+            {/* green top accent for active workers */}
+            {isActive && (
+              <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-brand-500 to-brand-700" />
+            )}
+
+            {/* header */}
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="font-mono text-sm text-zinc-200">{w.id.slice(0, 16)}…</div>
+                <div className="text-xs text-zinc-500 mt-0.5">since {fmtRelative(w.started_at)}</div>
+              </div>
+              {isActive ? (
+                <div className="relative flex items-center justify-center w-8 h-8 flex-shrink-0">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-20 motion-safe:animate-ping" />
+                  <span className="relative w-3 h-3 rounded-full bg-brand-400" />
+                </div>
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-zinc-600 mt-1 flex-shrink-0" />
+              )}
+            </div>
+
+            {/* queue pills */}
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {queues.map((q) => (
+                <span
+                  key={q}
+                  className="text-xs px-2 py-0.5 rounded-full bg-brand-950 border border-brand-900 text-brand-400"
+                >
+                  {q}
+                </span>
+              ))}
+            </div>
+
+            {/* current job */}
+            {isActive && w.current_job ? (
+              <div className="bg-surface-overlay rounded-lg px-3 py-2 border border-surface-border">
+                <div className="text-zinc-500 text-xs mb-0.5">processing</div>
+                <div className="font-mono text-xs text-zinc-300 truncate">{w.current_job}</div>
+              </div>
+            ) : isActive ? (
+              <div className="text-xs text-zinc-600 italic">idle — waiting for jobs</div>
+            ) : (
+              <div className="text-xs text-zinc-600">stopped</div>
+            )}
+
+            {/* footer */}
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-surface-border">
+              <span className="text-xs text-zinc-600">last seen</span>
+              <span className="text-xs text-zinc-400">{fmtRelative(w.last_seen)}</span>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +15,10 @@ import (
 	"github.com/ouzai/task-queue/internal/queue"
 	"github.com/ouzai/task-queue/internal/store"
 )
+
+var demoFirstNames = []string{"Alice", "Bob", "Carlos", "Diana", "Eve", "Frank", "Grace", "Hassan"}
+var demoLastNames  = []string{"Smith", "Johnson", "Lee", "Brown", "Davis", "Patel", "Kim"}
+var demoItems      = []string{"laptop", "headphones", "keyboard", "monitor", "webcam", "mouse", "desk lamp"}
 
 // Handler holds all the dependencies the route handlers need
 type Handler struct {
@@ -42,6 +48,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		api.DELETE("/jobs/:id", h.CancelJob)
 		api.GET("/queues", h.GetQueueStats)
 		api.GET("/workers", h.GetWorkers)
+		api.POST("/demo/order", h.PlaceOrder)
+		api.POST("/demo/flood", h.FloodOrders)
 	}
 
 	// SSE endpoint — not under /api because it doesn't return JSON
@@ -233,6 +241,98 @@ func (h *Handler) StreamEvents(c *gin.Context) {
 			c.Writer.Flush()
 		}
 	}
+}
+
+// POST /api/demo/order — places one fake order, fans out 4 background jobs
+func (h *Handler) PlaceOrder(c *gin.Context) {
+	jobs, err := h.enqueueOrder(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"jobs_created": len(jobs)})
+}
+
+// POST /api/demo/flood?count=N — fires N orders in a burst
+func (h *Handler) FloodOrders(c *gin.Context) {
+	count := 10
+	if n, err := strconv.Atoi(c.Query("count")); err == nil && n > 0 {
+		if n > 50 {
+			n = 50
+		}
+		count = n
+	}
+
+	total := 0
+	for i := 0; i < count; i++ {
+		jobs, err := h.enqueueOrder(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		total += len(jobs)
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"orders_placed": count, "jobs_created": total})
+}
+
+// enqueueOrder generates a fake order and enqueues its 4 jobs
+func (h *Handler) enqueueOrder(ctx context.Context) ([]*queue.Job, error) {
+	orderID := uuid.New().String()
+	customer := demoFirstNames[rand.Intn(len(demoFirstNames))] + " " + demoLastNames[rand.Intn(len(demoLastNames))]
+	email := fmt.Sprintf("%s@example.com", demoFirstNames[rand.Intn(len(demoFirstNames))])
+	item1 := demoItems[rand.Intn(len(demoItems))]
+	item2 := demoItems[rand.Intn(len(demoItems))]
+	amount := float64(50+rand.Intn(950)) + 0.99
+
+	type jobSpec struct {
+		jobType  string
+		queue    string
+		payload  any
+	}
+
+	specs := []jobSpec{
+		{
+			jobType: "process_payment",
+			queue:   "critical",
+			payload: map[string]any{"order_id": orderID, "customer": customer, "amount": amount},
+		},
+		{
+			jobType: "send_confirmation_email",
+			queue:   "email",
+			payload: map[string]any{"order_id": orderID, "customer": customer, "customer_email": email},
+		},
+		{
+			jobType: "update_inventory",
+			queue:   "default",
+			payload: map[string]any{"order_id": orderID, "items": []string{item1, item2}},
+		},
+		{
+			jobType: "generate_invoice",
+			queue:   "default",
+			payload: map[string]any{"order_id": orderID, "customer": customer, "total": amount},
+		},
+	}
+
+	var created []*queue.Job
+	for _, s := range specs {
+		raw, err := json.Marshal(s.payload)
+		if err != nil {
+			return nil, err
+		}
+		job, err := h.q.Enqueue(ctx, &queue.EnqueueRequest{
+			Queue:   s.queue,
+			Type:    s.jobType,
+			Payload: raw,
+		})
+		if err != nil {
+			return nil, err
+		}
+		h.broadcaster.Broadcast("job.created", job)
+		created = append(created, job)
+	}
+
+	return created, nil
 }
 
 // BroadcastQueueStats pushes live queue stats to all connected SSE clients
