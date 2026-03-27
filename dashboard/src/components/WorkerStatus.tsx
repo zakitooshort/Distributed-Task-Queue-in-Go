@@ -25,7 +25,7 @@ export function WorkerStatus({ workers }: Props) {
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {workers.map((w) => {
         const isActive = w.status === 'active'
-        const queues = w.queues.split(',').map((q) => q.trim()).filter(Boolean)
+        const queues = (w.queues || '').split(',').map((q) => q.trim()).filter(Boolean)
 
         return (
           <div

@@ -1,6 +1,6 @@
 .PHONY: setup dev-server dev-worker build dashboard docker-up docker-down
 
-# first time setup — downloads all go deps and node modules
+# first time setup  downloads all go deps and node modules
 setup:
 	go mod tidy
 	cd dashboard && npm install
