@@ -87,7 +87,7 @@ func registerHandlers(w *worker.Worker) {
 			return fmt.Errorf("invalid payload: %w", err)
 		}
 		slog.Info("processing payment", "order_id", p.OrderID, "customer", p.Customer, "amount", p.Amount)
-		time.Sleep(800 * time.Millisecond)
+		time.Sleep(10 * time.Second)
 		if rand.Float32() < 0.3 {
 			return fmt.Errorf("payment declined for order %s (simulated)", p.OrderID)
 		}
@@ -106,7 +106,7 @@ func registerHandlers(w *worker.Worker) {
 			return fmt.Errorf("invalid payload: %w", err)
 		}
 		slog.Info("sending confirmation email", "order_id", p.OrderID, "to", p.CustomerEmail)
-		time.Sleep(400 * time.Millisecond)
+		time.Sleep(10 * time.Second)
 		slog.Info("confirmation email sent", "order_id", p.OrderID, "to", p.CustomerEmail)
 		return nil
 	})
@@ -121,7 +121,7 @@ func registerHandlers(w *worker.Worker) {
 			return fmt.Errorf("invalid payload: %w", err)
 		}
 		slog.Info("updating inventory", "order_id", p.OrderID, "items", p.Items)
-		time.Sleep(600 * time.Millisecond)
+		time.Sleep(10 * time.Second)
 		slog.Info("inventory updated", "order_id", p.OrderID)
 		return nil
 	})
@@ -137,7 +137,7 @@ func registerHandlers(w *worker.Worker) {
 			return fmt.Errorf("invalid payload: %w", err)
 		}
 		slog.Info("generating invoice", "order_id", p.OrderID, "customer", p.Customer, "total", p.Total)
-		time.Sleep(1200 * time.Millisecond)
+		time.Sleep(10 * time.Second)
 		slog.Info("invoice generated", "order_id", p.OrderID)
 		return nil
 	})

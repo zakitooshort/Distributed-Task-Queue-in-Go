@@ -18,6 +18,10 @@ export default function App() {
     fetchJobs()
     fetchWorkers()
     fetchStats()
+
+    // poll workers every 3s so current_job stays live without SSE from worker containers
+    const workerPoll = setInterval(fetchWorkers, 3000)
+    return () => clearInterval(workerPoll)
   }, [])
 
   async function fetchJobs() {

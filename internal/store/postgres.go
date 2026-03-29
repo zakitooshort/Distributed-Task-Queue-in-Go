@@ -35,12 +35,12 @@ func (JobRecord) TableName() string { return "jobs" }
 
 // WorkerRecord is the gorm model for the workers table
 type WorkerRecord struct {
-	ID         string     `gorm:"primaryKey"`
-	Status     string     `gorm:"not null;default:active"`
-	Queues     string     // comma-separated list, easier than postgres TEXT[]
-	CurrentJob *uuid.UUID `gorm:"type:uuid"`
-	LastSeen   time.Time
-	StartedAt  time.Time
+	ID         string     `gorm:"primaryKey"             json:"id"`
+	Status     string     `gorm:"not null;default:active" json:"status"`
+	Queues     string     `json:"queues"`
+	CurrentJob *uuid.UUID `gorm:"type:uuid"              json:"current_job"`
+	LastSeen   time.Time  `json:"last_seen"`
+	StartedAt  time.Time  `json:"started_at"`
 }
 
 func (WorkerRecord) TableName() string { return "workers" }
@@ -181,8 +181,25 @@ func (s *PostgresStore) ListWorkers() ([]WorkerRecord, error) {
 	var workers []WorkerRecord
 	// only show workers seen in the last 2 minutes as "active"
 	cutoff := time.Now().UTC().Add(-2 * time.Minute)
-	err := s.db.Where("last_seen > ? OR status = 'active'", cutoff).Find(&workers).Error
+	err := s.db.Where("last_seen > ?", cutoff).Find(&workers).Error
 	return workers, err
+}
+
+// GetRecentlyUpdatedJobs returns jobs whose status changed after the given time
+func (s *PostgresStore) GetRecentlyUpdatedJobs(since time.Time) ([]queue.Job, error) {
+	var records []JobRecord
+	err := s.db.Where(
+		"started_at > ? OR completed_at > ? OR failed_at > ?",
+		since, since, since,
+	).Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	jobs := make([]queue.Job, len(records))
+	for i, r := range records {
+		jobs[i] = *recordToJob(&r)
+	}
+	return jobs, nil
 }
 
 // GetThroughput returns how many jobs completed in the last intervalSeconds

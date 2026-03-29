@@ -84,6 +84,23 @@ func main() {
 		}
 	}()
 
+	// poll for job status changes every 2 seconds and push to SSE
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		lastPoll := time.Now()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				since := lastPoll.Add(-1 * time.Second) // 1s overlap to avoid missing events
+				lastPoll = time.Now()
+				handler.BroadcastJobUpdates(since)
+			}
+		}
+	}()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

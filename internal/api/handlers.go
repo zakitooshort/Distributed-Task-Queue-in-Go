@@ -17,8 +17,8 @@ import (
 )
 
 var demoFirstNames = []string{"Alice", "Bob", "Carlos", "Diana", "Eve", "Frank", "Grace", "Hassan"}
-var demoLastNames  = []string{"Smith", "Johnson", "Lee", "Brown", "Davis", "Patel", "Kim"}
-var demoItems      = []string{"laptop", "headphones", "keyboard", "monitor", "webcam", "mouse", "desk lamp"}
+var demoLastNames = []string{"Smith", "Johnson", "Lee", "Brown", "Davis", "Patel", "Kim"}
+var demoItems = []string{"laptop", "headphones", "keyboard", "monitor", "webcam", "mouse", "desk lamp"}
 
 // Handler holds all the dependencies the route handlers need
 type Handler struct {
@@ -52,7 +52,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		api.POST("/demo/flood", h.FloodOrders)
 	}
 
-	// SSE endpoint — not under /api because it doesn't return JSON
+	// SSE endpoint not under /api because it doesn't return JSON
 	r.GET("/events", h.StreamEvents)
 }
 
@@ -121,7 +121,7 @@ func (h *Handler) GetJob(c *gin.Context) {
 	c.JSON(http.StatusOK, job)
 }
 
-// POST /api/jobs/:id/retry — replay a dead job
+// POST /api/jobs/:id/retry replay a dead job
 func (h *Handler) RetryJob(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -139,7 +139,7 @@ func (h *Handler) RetryJob(c *gin.Context) {
 	c.JSON(http.StatusOK, job)
 }
 
-// DELETE /api/jobs/:id — cancel a pending job
+// DELETE /api/jobs/:id cancel a pending job
 func (h *Handler) CancelJob(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -170,7 +170,7 @@ func (h *Handler) CancelJob(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "job cancelled"})
 }
 
-// GET /api/queues — queue depths + throughput stats
+// GET /api/queues queue depths + throughput stats
 func (h *Handler) GetQueueStats(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -208,7 +208,7 @@ func (h *Handler) GetWorkers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"workers": workers})
 }
 
-// GET /events — SSE stream for the dashboard
+// GET /events SSE stream for the dashboard
 func (h *Handler) StreamEvents(c *gin.Context) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -243,7 +243,7 @@ func (h *Handler) StreamEvents(c *gin.Context) {
 	}
 }
 
-// POST /api/demo/order — places one fake order, fans out 4 background jobs
+// POST /api/demo/order places one fake order, fans out 4 background jobs
 func (h *Handler) PlaceOrder(c *gin.Context) {
 	jobs, err := h.enqueueOrder(c.Request.Context())
 	if err != nil {
@@ -253,7 +253,7 @@ func (h *Handler) PlaceOrder(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"jobs_created": len(jobs)})
 }
 
-// POST /api/demo/flood?count=N — fires N orders in a burst
+// POST /api/demo/flood?count=N fires N orders in a burst
 func (h *Handler) FloodOrders(c *gin.Context) {
 	count := 10
 	if n, err := strconv.Atoi(c.Query("count")); err == nil && n > 0 {
@@ -286,9 +286,9 @@ func (h *Handler) enqueueOrder(ctx context.Context) ([]*queue.Job, error) {
 	amount := float64(50+rand.Intn(950)) + 0.99
 
 	type jobSpec struct {
-		jobType  string
-		queue    string
-		payload  any
+		jobType string
+		queue   string
+		payload any
 	}
 
 	specs := []jobSpec{
@@ -333,6 +333,31 @@ func (h *Handler) enqueueOrder(ctx context.Context) ([]*queue.Job, error) {
 	}
 
 	return created, nil
+}
+
+// BroadcastJobUpdates polls for recently changed jobs and pushes them to SSE clients
+// call this every 2s from the server main loop
+func (h *Handler) BroadcastJobUpdates(since time.Time) {
+	jobs, err := h.db.GetRecentlyUpdatedJobs(since)
+	if err != nil {
+		return
+	}
+	for _, job := range jobs {
+		var eventType string
+		switch string(job.Status) {
+		case "running":
+			eventType = "job.started"
+		case "completed":
+			eventType = "job.completed"
+		case "failed":
+			eventType = "job.failed"
+		case "dead":
+			eventType = "job.dead"
+		default:
+			continue
+		}
+		h.broadcaster.Broadcast(eventType, job)
+	}
 }
 
 // BroadcastQueueStats pushes live queue stats to all connected SSE clients
